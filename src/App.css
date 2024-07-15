@@ -1,0 +1,151 @@
+/* 
+.upload-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+button {
+  padding: 10px 20px;
+  margin-top: 20px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #45a049;
+}
+
+.error-message {
+  color: red;
+  margin-top: 10px;
+}
+
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #3f51b5;
+  color: white;
+  height: 100vh;
+  padding: 20px;
+  box-sizing: border-box;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+.content {
+  flex-grow: 1;
+  padding: 20px;
+  margin-left: 260px;
+}
+
+.paper {
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.results-section {
+  margin-top: 20px;
+}
+
+.results-section ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.results-section li {
+  padding: 5px 0;
+} */
+
+
+body {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  font-family: 'Roboto', sans-serif;
+  color: black;
+}
+
+.container {
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0px 0px 15px rgba(219, 219, 219, 0.2);
+  margin-top: 50px;
+  flex-grow: 1;
+  margin-left: 250px; 
+}
+
+.sidebar {
+  width: 250px;
+  background-color: #2c3e50; 
+  color: black;
+  height:auto;
+}
+
+.sidebar .MuiListItemText-primary {
+  font-weight: bold;
+}
+
+.sidebar .MuiListItemIcon-root {
+  color: black;
+}
+
+.sidebar .MuiDivider-root {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.title {
+  font-weight: bold;
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.upload-form input[type="file"] {
+  margin-bottom: 20px;
+  color: black;
+}
+
+.upload-form .MuiTextField-root {
+  color: black;
+}
+
+.upload-form .MuiButtonBase-root {
+  background-color: #47ba47;
+  color: black;
+}
+
+.upload-form .MuiButtonBase-root:hover {
+  background-color: #47ba47;
+}
+
+.error-message {
+  color: red;
+  margin-top: 10px;
+}
+
+.results-paper {
+  padding: 20px;
+  margin-top: 20px;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.results-title {
+  font-weight: bold;
+  font-size: 18px;
+  color: black;
+}
+
+.results-list {
+  margin-left: 20px;
+  color: black;
+}
