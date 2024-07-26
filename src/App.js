@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import CircularProgress from '@mui/material/CircularProgress';
-import { Container, Button, Typography, TextField, Box, Paper, Drawer, List, ListItem, ListItemText, Divider, ListItemIcon } from '@mui/material';
-import { InsertDriveFile, History, Settings, Home, Info, HomeMaxOutlined } from '@mui/icons-material';
+import { Container, Button, Typography, TextField, Box, Paper, Drawer, List, ListItem, ListItemText, Divider, ListItemIcon, IconButton, Tooltip, LinearProgress } from '@mui/material';
+import { InsertDriveFile, History, Home, Info, HelpOutline } from '@mui/icons-material';
 import './App.css'; 
+import headerImage from './cyber.jpg';
 
 const App = () => {
   const [file, setFile] = useState(null);
@@ -13,6 +14,8 @@ const App = () => {
   const [error, setError] = useState('');
   const [history, setHistory] = useState([]);
   const [currentTab, setCurrentTab] = useState('scan');
+  const [showInfo, setShowInfo] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     const savedHistory = JSON.parse(localStorage.getItem('scanHistory')) || [];
@@ -32,7 +35,21 @@ const App = () => {
   };
 
   const handleUrlChange = (e) => {
-    setDownloadUrl(e.target.value);
+    const url = e.target.value;
+    setDownloadUrl(url);
+
+    const urlPattern = new RegExp('^(https?:\\/\\/)?' + 
+      '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.?)+[a-z]{2,}|' + 
+      '((\\d{1,3}\\.){3}\\d{1,3}))' + 
+      '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*' + 
+      '(\\?[;&a-z\\d%_.~+=-]*)?' + 
+      '(\\#[-a-z\\d_]*)?$', 'i'); 
+
+    if (!urlPattern.test(url)) {
+      setError('Please enter a valid URL');
+    } else {
+      setError('');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -46,18 +63,21 @@ const App = () => {
       return;
     }
     setIsLoading(true);
+    setProgress(0); 
+    startProgress(); 
     const formData = new FormData();
     formData.append('file', file);
     formData.append('download_url', downloadUrl);
 
     try {
-      const response = await axios.post('http://192.168.179.130:5000/upload', formData, {
+      const response = await axios.post('http://192.168.179.129:5000/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      setResults(response.data);
-      const updatedHistory = [response.data, ...history];
+      const responseData = { ...response.data, scan_date: new Date().toISOString(), file_name: file.name };
+      updateResultsGradually(responseData);
+      const updatedHistory = [responseData, ...history];
       setHistory(updatedHistory);
       localStorage.setItem('scanHistory', JSON.stringify(updatedHistory));
     } catch (error) {
@@ -65,54 +85,145 @@ const App = () => {
       alert('Error uploading file');
     } finally {
       setIsLoading(false);
+      setProgress(100);
     }
   };
 
+  const startProgress = () => {
+    const updateIntervals = [1000, 3000, 7000, 16000];
+    const increments = [3, 5, 7];
+    let elapsedTime = 0;
+  
+    
+    let timeIncrement = updateIntervals[Math.floor(Math.random() * updateIntervals.length)];
+  
+    const interval = setInterval(() => {
+      timeIncrement = updateIntervals[Math.floor(Math.random() * updateIntervals.length)];
+      const progressIncrement = increments[Math.floor(Math.random() * increments.length)];
+  
+      setProgress(prevProgress => {
+        const newProgress = prevProgress + progressIncrement;
+        if (newProgress >= 100 || elapsedTime >= 100000) {
+          clearInterval(interval);
+          return 100;
+        }
+        return newProgress;
+      });
+  
+      elapsedTime += timeIncrement;
+    }, timeIncrement);
+  };
+
+  const getResultText = (result) => {
+    if (!result || !result.malicious) {
+      return <span style={{ color: 'green' }}>Detected as safe</span>;
+    }
+    return <span style={{ color: 'red' }}>Detected as malware</span>;
+  };
+
+  const getEntropyText = (entropy) => {
+    return entropy > 7 ? (
+      <span style={{ color: 'red' }}>High entropy, potentially compressed or encrypted content</span>
+    ) : (
+      <span style={{ color: 'green' }}>Normal entropy</span>
+    );
+  };
+
   const renderResults = () => {
-    if (!results) return null;
+    if (!results || results.final_score === undefined) return null;
+
+    const scoreColor = results.final_score > 65 ? 'green' : results.final_score > 35 ? 'orange' : 'red';
 
     return (
       <Paper elevation={3} className="results-paper">
         <Typography className="results-title">Analysis Results</Typography>
-        <Typography variant="body1">Average Threat Score: {results.final_score.toFixed(2)}</Typography>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h4" className="final-score" style={{ color: scoreColor }}>
+            Analysis Score: {results.final_score !== undefined ? results.final_score.toFixed(2) : 'N/A'} / 100
+          </Typography>
+          <Tooltip title="Click for more info" placement="top">
+            <IconButton onClick={() => setShowInfo(!showInfo)}>
+              <HelpOutline />
+            </IconButton>
+          </Tooltip>
+        </Box>
+        {showInfo && (
+          <Paper elevation={3} className="info-paper">
+            <Typography variant="body2">The score is calculated based on various factors including:</Typography>
+            <ul>
+              <li>VirusTotal detections: This has the most weight because it aggregates results from multiple antivirus engines.</li>
+              <li>MetaDefender detections: This is important as it provides additional verification from another set of antivirus engines.</li>
+              <li>ClamAV results: Provides an additional layer of scanning with an open-source antivirus engine.</li>
+              <li>YARA results: Detects specific malware signatures.</li>
+              <li>URL reputation: Checks the safety of the URL where the file was downloaded from.</li>
+              <li>Metadata analysis: Factors like file size and entropy provide insights into the nature of the file.</li>
+              <li>IP fraud score: Indicates the likelihood of the IP address being associated with malicious activity.</li>
+            </ul>
+          </Paper>
+        )}
+        <Typography variant="h5" style={{ color: scoreColor }}>
+          {results.final_score > 65 ? 'File is safe' : results.final_score > 35 ? 'File is suspicious' : 'File is malicious'}
+        </Typography>
         <Typography variant="body1">Duration: {results.duration} seconds</Typography>
+        <Box className="score-indicator">
+          <Box className="score-bar">
+            <Box className="indicator" style={{ left: `${results.final_score}%`, backgroundColor: 'black', width: '4px' }} />
+          </Box>
+          <Box className="score-labels">
+            <Typography variant="body2" style={{ color: 'red' }}>Malicious</Typography>
+            <Typography variant="body2" style={{ color: 'orange' }}>Suspicious</Typography>
+            <Typography variant="body2" style={{ color: 'green' }}>Safe</Typography>
+          </Box>
+        </Box>
         <Typography className="results-title">VirusTotal Results:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Malicious: {results.vt_results.malicious}</li>
-          <li>Suspicious: {results.vt_results.suspicious}</li>
-          <li>Undetected: {results.vt_results.undetected}</li>
-          <li>Harmless: {results.vt_results.harmless}</li>
+          <li>{results.vt_results ? getResultText(results.vt_results) : 'N/A'}</li>
         </Typography>
         <Typography className="results-title">MetaDefender Results:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Malicious: {results.md_results.malicious}</li>
-          <li>Harmless: {results.md_results.harmless}</li>
-          <li>Undetected: {results.md_results.undetected}</li>
+          <li>{results.md_results ? getResultText(results.md_results) : 'N/A'}</li>
         </Typography>
         <Typography className="results-title">ClamAV Results:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Malicious: {results.clamav_results.malicious}</li>
-          <li>Harmless: {results.clamav_results.harmless}</li>
-          <li>Undetected: {results.clamav_results.undetected}</li>
+          <li>{results.clamav_results ? getResultText(results.clamav_results) : 'N/A'}</li>
         </Typography>
         <Typography className="results-title">YARA Results:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Malicious: {results.yara_results.malicious}</li>
-          <li>Harmless: {results.yara_results.harmless}</li>
+          <li style={{ color: results.yara_results && results.yara_results.malicious > 0 ? 'red' : 'green', fontWeight: 'bold' }}>
+            {results.yara_results && results.yara_results.malicious > 0 ? 
+              `Detected as malware: ${results.yara_results.malicious_details.join(', ')}` : 
+              'Detected as safe'}
+          </li>
         </Typography>
-        <Typography className="results-title">URL Reputation Score: {results.url_reputation_score}</Typography>
+        <Typography className="results-title">URL Reputation:</Typography>
+        <Typography variant="body2" component="ul" className="results-list">
+          <li>{results.url_reputation_score === 'url is not safe' ? <span style={{ color: 'red' }}>URL is not safe</span> : <span style={{ color: 'green' }}>Clean</span>}</li>
+        </Typography>
         <Typography className="results-title">Metadata Analysis:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Creation Date: {results.metadata_analysis.creation_date}</li>
-          <li>Modification Date: {results.metadata_analysis.modification_date}</li>
-          <li>File Age (days): {results.metadata_analysis.file_age_days}</li>
+          {results.metadata_analysis ? Object.entries(results.metadata_analysis).map(([key, value]) => (
+            <li key={key}>{key}: {value}</li>
+          )) : 'N/A'}
         </Typography>
         <Typography className="results-title">Historical Data:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Previously Seen: {results.historical_data.previously_seen ? 'Yes' : 'No'}</li>
-          <li>Times Seen: {results.historical_data.times_seen}</li>
-          <li>First Seen: {results.historical_data.first_seen}</li>
-          <li>Last Seen: {results.historical_data.last_seen}</li>
+          <li>Previously Seen: {results.historical_data ? (results.historical_data.previously_seen ? 'Yes' : 'No') : 'N/A'}</li>
+          <li>Times Seen: {results.historical_data ? results.historical_data.times_seen : 'N/A'}</li>
+          <li>First Seen: {results.historical_data ? results.historical_data.first_seen : 'N/A'}</li>
+          <li>Last Seen: {results.historical_data ? results.historical_data.last_seen : 'N/A'}</li>
+        </Typography>
+        <Typography className="results-title">Entropy:</Typography>
+        <Typography variant="body2" component="ul" className="results-list">
+          <li>{results.entropy !== undefined ? getEntropyText(results.entropy) : 'N/A'}</li>
+        </Typography>
+        <Typography className="results-title">IP Fraud Score:</Typography>
+        <Typography variant="body2" component="ul" className="results-list">
+          <li style={{ color: results.ip_fraud_score > 70 ? 'red' : 'black' }}>{results.ip_fraud_score !== undefined ? results.ip_fraud_score : 'N/A'}</li>
+        </Typography>
+        <Typography className="results-title">Behavioral Analysis:</Typography>
+        <Typography variant="body2" component="ul" className="results-list">
+          <li>Execution Behavior: {results.behavioral_analysis?.execution_behavior ? 'Detected' : 'Not Detected'}</li>
+          <li>File System Changes Detected: {results.behavioral_analysis?.fs_changes_detected ? 'Yes' : 'No'}</li>
         </Typography>
       </Paper>
     );
@@ -120,54 +231,83 @@ const App = () => {
 
   const renderHistory = () => {
     if (!history.length) return <Typography>No scan history available.</Typography>;
-
+  
     return history.map((item, index) => (
       <Paper key={index} elevation={3} className="results-paper">
         <Typography className="results-title">Analysis Results</Typography>
-        <Typography variant="body1">Average Threat Score: {item.final_score.toFixed(2)}</Typography>
+        <Typography variant="h4" className="final-score" style={{ color: item.final_score > 65 ? 'green' : item.final_score > 35 ? 'orange' : 'red' }}>
+          Average Threat Score: {item.final_score.toFixed(2)}
+        </Typography>
+        <Typography variant="h5" style={{ color: item.final_score > 65 ? 'green' : item.final_score > 35 ? 'orange' : 'red' }}>
+          {item.final_score > 65 ? 'File is safe' : item.final_score > 35 ? 'File is suspicious' : 'File is malicious'}
+        </Typography>
         <Typography variant="body1">Duration: {item.duration} seconds</Typography>
+        <Typography variant="h6" style={{ fontWeight: 'bold', color: 'blue' }}>Scan Date: {new Date(item.scan_date).toLocaleDateString()}</Typography>
+        <Typography variant="h6" style={{ fontWeight: 'bold', color: 'blue' }}>File Name: {item.file_name}</Typography>
+  
         <Typography className="results-title">VirusTotal Results:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Malicious: {item.vt_results.malicious}</li>
-          <li>Suspicious: {item.vt_results.suspicious}</li>
-          <li>Undetected: {item.vt_results.undetected}</li>
-          <li>Harmless: {item.vt_results.harmless}</li>
+          <li>{item.vt_results ? getResultText(item.vt_results) : 'N/A'}</li>
         </Typography>
         <Typography className="results-title">MetaDefender Results:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Malicious: {item.md_results.malicious}</li>
-          <li>Harmless: {item.md_results.harmless}</li>
-          <li>Undetected: {item.md_results.undetected}</li>
+          <li>{item.md_results ? getResultText(item.md_results) : 'N/A'}</li>
         </Typography>
         <Typography className="results-title">ClamAV Results:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Malicious: {item.clamav_results.malicious}</li>
-          <li>Harmless: {item.clamav_results.harmless}</li>
-          <li>Undetected: {item.clamav_results.undetected}</li>
+          <li>{item.clamav_results ? getResultText(item.clamav_results) : 'N/A'}</li>
         </Typography>
         <Typography className="results-title">YARA Results:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Malicious: {item.yara_results.malicious}</li>
-          <li>Harmless: {item.yara_results.harmless}</li>
+          <li>{item.yara_results && item.yara_results.malicious > 0 ? `Detected as malware: ${item.yara_results.malicious_details.join(', ')}` : 'Detected as safe'}</li>
         </Typography>
-        <Typography className="results-title">URL Reputation Score: {item.url_reputation_score}</Typography>
+        <Typography className="results-title">URL Reputation:</Typography>
+        <Typography variant="body2" component="ul" className="results-list">
+          <li>{item.url_reputation_score === 'url is not safe' ? <span style={{ color: 'red' }}>URL is not safe</span> : <span style={{ color: 'green' }}>Clean</span>}</li>
+        </Typography>
         <Typography className="results-title">Metadata Analysis:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Creation Date: {item.metadata_analysis.creation_date}</li>
-          <li>Modification Date: {item.metadata_analysis.modification_date}</li>
-          <li>File Age (days): {item.metadata_analysis.file_age_days}</li>
+          {item.metadata_analysis ? Object.entries(item.metadata_analysis).map(([key, value]) => (
+            <li key={key}>{key}: {value}</li>
+          )) : 'N/A'}
         </Typography>
         <Typography className="results-title">Historical Data:</Typography>
         <Typography variant="body2" component="ul" className="results-list">
-          <li>Previously Seen: {item.historical_data.previously_seen ? 'Yes' : 'No'}</li>
-          <li>Times Seen: {item.historical_data.times_seen}</li>
-          <li>First Seen: {item.historical_data.first_seen}</li>
-          <li>Last Seen: {item.historical_data.last_seen}</li>
+          <li>Previously Seen: {item.historical_data ? (item.historical_data.previously_seen ? 'Yes' : 'No') : 'N/A'}</li>
+          <li>Times Seen: {item.historical_data ? item.historical_data.times_seen : 'N/A'}</li>
+          <li>First Seen: {item.historical_data ? item.historical_data.first_seen : 'N/A'}</li>
+          <li>Last Seen: {item.historical_data ? item.historical_data.last_seen : 'N/A'}</li>
+        </Typography>
+        <Typography className="results-title">Entropy:</Typography>
+        <Typography variant="body2" component="ul" className="results-list">
+          <li>{item.entropy !== undefined ? getEntropyText(item.entropy) : 'N/A'}</li>
+        </Typography>
+        <Typography className="results-title">IP Fraud Score:</Typography>
+        <Typography variant="body2" component="ul" className="results-list">
+          <li style={{ color: item.ip_fraud_score > 70 ? 'red' : 'black' }}>{item.ip_fraud_score !== undefined ? item.ip_fraud_score : 'N/A'}</li>
+        </Typography>
+        <Typography className="results-title">Behavioral Analysis:</Typography>
+        <Typography variant="body2" component="ul" className="results-list">
+          <li>Execution Behavior: {item.behavioral_analysis?.execution_behavior ? 'Detected' : 'Not Detected'}</li>
+          <li>File System Changes Detected: {item.behavioral_analysis?.fs_changes_detected ? 'Yes' : 'No'}</li>
         </Typography>
       </Paper>
     ));
   };
-
+  
+  const updateResultsGradually = (newResults) => {
+    const updateInterval = 500; 
+    let partialResults = {};
+  
+    const keys = Object.keys(newResults);
+    keys.forEach((key, index) => {
+      setTimeout(() => {
+        partialResults = { ...partialResults, [key]: newResults[key] };
+        setResults(partialResults);
+      }, index * updateInterval);
+    });
+  };
+  
   return (
     <Box sx={{ display: 'flex' }}>
       <Drawer
@@ -186,55 +326,54 @@ const App = () => {
           </ListItem>
           <Divider />
           <ListItem button onClick={() => setCurrentTab('scan')}>
-          <ListItemIcon><Home /></ListItemIcon>
-          <ListItemText primary="Home" />
-        </ListItem>
+            <ListItemIcon><Home /></ListItemIcon>
+            <ListItemText primary="Home" />
+          </ListItem>
           <ListItem button>
             <ListItemIcon><Info /></ListItemIcon>
             <ListItemText primary="About" />
           </ListItem>
-          <ListItem button>
-            <ListItemIcon><Settings /></ListItemIcon>
-            <ListItemText primary="Settings" />
-          </ListItem>
         </List>
         <Divider />
         <Typography variant="body2" align="center" style={{ padding: '16px' }}>
-          &copy; 2024 Analyzer Inc.
+          &copy; CS2 Scanner
         </Typography>
       </Drawer>
       <Container className="container">
         {currentTab === 'scan' && (
           <>
-            <Typography className="title" variant="h4" gutterBottom>
-              Multi-media scanner CS2
-            </Typography>
+            <Box className="header" sx={{ backgroundImage: `url(${headerImage})` }}>
+              <Typography className="title" variant="h4" gutterBottom>
+                Minos Scanner
+              </Typography>
+            </Box>
             <form onSubmit={handleSubmit} className="upload-form">
               <input type="file" onChange={handleFileChange} className="file-input" />
               {error && <Typography variant="body2" className="error-message">{error}</Typography>}
               <TextField
-                label="Download URL"
+                label="Enter where you have downloaded the file from"
                 value={downloadUrl}
                 onChange={handleUrlChange}
                 fullWidth
                 margin="normal"
                 InputLabelProps={{
-                  style: { color: '#000000' , font: 'bold'}
+                  style: { color: '#000000', fontWeight: 'bold' }
                 }}
                 InputProps={{
                   style: { color: '#000000' }
                 }}
               />
-              <Button type="submit" variant="contained" color="primary" disabled={isLoading || !file || !downloadUrl}>
+              <Button type="submit" variant="contained" color="primary" disabled={isLoading || !file || !downloadUrl || error}>
                 Upload and Scan
               </Button>
             </form>
             {isLoading && (
-              <Box mt={2} display="flex" justifyContent="center">
+              <Box mt={2}>
                 <CircularProgress />
-                <Typography variant="body1" style={{ marginLeft: '10px', color: '#ffffff' }}>
+                <Typography variant="body1" style={{ marginLeft: '10px', color: '#000000' }}>
                   Scanning...
                 </Typography>
+                <LinearProgress variant="determinate" value={progress} />
               </Box>
             )}
             {renderResults()}
@@ -251,7 +390,7 @@ const App = () => {
       </Container>
     </Box>
   );
-};
-
-export default App;
-
+  };
+  
+  export default App;
+  
